@@ -610,8 +610,6 @@
     border-color: var(--border);
     border-bottom-color: var(--surface);
   }
-  .tab-panel { display: none; }
-  .tab-panel.active { display: block; }
 
   /* ── Checklist ── */
   .checklist-wrap { padding: 4px 0; }
@@ -801,6 +799,44 @@
   .cl-item.checked .cl-meta-chip { opacity: 0.4; }
   .cl-meta { display:flex; flex-wrap:wrap; gap:6px; margin-top:5px; }
   .cl-meta-chip { display:inline-flex; align-items:center; gap:4px; font-size:11px; padding:2px 8px; border-radius:4px; line-height:1.4; }
+  .tab-panel { display: none !important; }
+  .tab-panel.active { display: block !important; }
+  /* Bottom action buttons */
+  .bottom-actions {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+    max-width: 860px;
+    width: calc(100% - 40px);
+    pointer-events: none;
+  }
+  .back-btn, .reset-btn {
+    pointer-events: all;
+    position: absolute;
+    bottom: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 11px;
+    font-family: 'Noto Sans JP', sans-serif;
+    padding: 0 12px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+    height: 28px;
+  }
+  .back-btn { display: none; left: 0; }
+  .reset-btn { right: 0; }
+  .back-btn svg, .reset-btn svg { flex-shrink: 0; }
+  .back-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .reset-btn:hover { border-color: var(--danger); color: var(--danger); }
 
 </style>
 </head>
@@ -811,21 +847,18 @@
     <button class="lang-btn" id="langEN" onclick="setLang('en')">🇺🇸 English</button>
     <button class="lang-btn" id="langFR" onclick="setLang('fr')">🇫🇷 Français</button>
   </div>
-
   <div class="header">
-    <div class="header-tag">// OTC Regulatory AI Assistant v1.3</div>
+    <div class="header-tag">// OTC Regulatory AI Assistant v1.6</div>
     <h1 id="headerTitle">OTC薬事戦略アシスタント</h1>
     <p id="headerSubtitle">開発製剤の情報をステップバイステップで入力すると、申請国ごとの薬事戦略・規格・CPPを自動整理します</p>
   </div>
-
   <div class="progress-wrap">
     <div class="progress-header">
-      <span class="progress-label" id="progressLabel">STEP 0 / 10</span>
+      <span class="progress-label" id="progressLabel">STEP 0 / 11</span>
       <span class="progress-pct" id="progressPct">0%</span>
     </div>
     <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
   </div>
-
   <div class="step-nav" id="stepNav"></div>
 
   <div class="tab-bar" id="tabBar">
@@ -850,7 +883,16 @@
       </svg>
     </button>
   </div>
+</div>
 
+<!-- Fixed bottom action buttons -->
+<div class="bottom-actions" style="height:28px;">
+  <button class="back-btn" id="backBtn" onclick="goBack()">
+    <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <polyline points="15 18 9 12 15 6"></polyline>
+    </svg>
+    <span id="backLabel">前の質問に戻る</span>
+  </button>
   <button class="reset-btn" onclick="resetAll()">
     <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
       <polyline points="1 4 1 10 7 10"></polyline>
@@ -861,6 +903,11 @@
 </div>
 
 <script>
+
+
+
+
+
 // ── State ────────────────────────────────────────────────
 var LANG = 'ja';
 var currentStep = 0;
@@ -869,9 +916,10 @@ var isLoading = false;
 var selectedCountries = [];
 var _clData = [];
 var _clChecked = {};
+var stepHistory = []; // stack of {step, answers, selectedCountries, msgCount}
 
 // ── Constants ────────────────────────────────────────────
-var TOTAL_STEPS = 10;
+var TOTAL_STEPS = 11;
 
 var COUNTRIES = [
   {code:'JP',flag:'🇯🇵',name:'日本',reg:'PMDA / 薬機法'},
@@ -964,8 +1012,8 @@ var STEPS_I18N = {
       question:'申請予定国を選択してください（複数選択可）。',
       detail:'選択した国ごとに規制要件・申請区分・必要資料を整理します。'},
     {key:'drugType', type:'drugType',
-      question:'製品カテゴリ（申請区分）を教えてください。',
-      detail:'申請国の制度に合わせた選択肢を表示します。'},
+      question:'申請手続き区分を教えてください。',
+      detail:'申請国の規制当局・手続き種別に合わせた選択肢を表示します（新規申請・Variation・Line Extension・スイッチ等）。'},
     {key:'dosageForm',
       question:'剤形を教えてください。',
       detail:'製剤設計と規格設定に影響します。',
@@ -985,11 +1033,15 @@ var STEPS_I18N = {
     {key:'nonCompendialAdditive', type:'multiselect',
       question:'公定書外の添加剤について教えてください。',
       detail:'色素・香料で食品添加物基準に適合している場合、要件が軽減される場合があります。',
-      options:['色素（食品添加物規格に適合）','色素（食品添加物規格への適合不明・未確認）','色素（食品添加物規格に非適合・医薬品専用）','香料（食品添加物規格に適合）','香料（食品添加物規格への適合不明・未確認）','香料（食品添加物規格に非適合・医薬品専用）','色素・香料以外の公定書外添加剤あり','公定書外添加剤なし／前の質問で該当なしを選択']},
+      options:buildAdditiveOptions()},
     {key:'referenceProduct',
-      question:'参照製品・先発品はありますか？',
-      detail:'スイッチOTCや後続品の場合はお知らせください。',
-      options:['医療用品のスイッチ（国内承認あり）','海外OTCのスイッチ（国内未承認）','既存OTCの後続品・改良品','完全新規（参照製品なし）']},
+      question:'参照製品・先発品の詳細を教えてください。',
+      detail:'製品名・剤形・用法用量・承認状況を入力してください。BEQ戦略や比較溶出試験の設計に使用します。',
+      placeholder:'例：イブプロフェン錠200mg（市販品X）、1回1錠 1日3回食後、国内承認済み。または「完全新規・参照製品なし」'},
+    {key:'medicalStrategy',
+      question:'メディカル・クリニカル戦略の方向性を教えてください。',
+      detail:'BEQ（生物学的同等性）、臨床ブリッジング、安全性データパッケージ、スイッチ用臨床試験など、想定しているアプローチを入力してください。',
+      placeholder:'例：先発品との比較溶出試験のみ（BEQ戦略）、in vivo BEスタディは不要と想定。または「臨床データなし・文献エビデンスで対応予定」'},
     {key:'targetIndication',
       question:'効能・効果（予定）を教えてください。',
       detail:'標榜予定の効能と対象疾患を入力してください。',
@@ -1004,8 +1056,8 @@ var STEPS_I18N = {
       question:'Select target countries for submission (multiple allowed).',
       detail:'We will tailor regulatory requirements, classification and dossier needs per country.'},
     {key:'drugType', type:'drugType',
-      question:'What is the product category / regulatory classification?',
-      detail:'Options are tailored to your selected target markets.'},
+      question:'What is the regulatory procedure / application type?',
+      detail:'Options are tailored to your target countries (Initial MA, Variation, Line Extension, Switch, Generic, etc.).'},
     {key:'dosageForm',
       question:'What is the dosage form?',
       detail:'Affects formulation design and specification setting.',
@@ -1025,11 +1077,15 @@ var STEPS_I18N = {
     {key:'nonCompendialAdditive', type:'multiselect',
       question:'Tell us about the non-compendial excipient(s).',
       detail:'Colorants and flavors compliant with food additive standards may have reduced documentation requirements.',
-      options:['Colorant (compliant with food additive standards)','Colorant (food additive compliance unknown)','Colorant (non-compliant — pharmaceutical-grade only)','Flavor (compliant with food additive standards)','Flavor (food additive compliance unknown)','Flavor (non-compliant — pharmaceutical-grade only)','Other non-compendial excipient','No non-compendial excipients / N/A']},
+      options:buildAdditiveOptions()},
     {key:'referenceProduct',
-      question:'Is there a reference or originator product?',
-      detail:'Please specify if this is a switch OTC, line extension, or generic.',
-      options:['Switch from Rx (domestically approved)','Switch from overseas OTC (not approved domestically)','Follow-on / improved version of existing OTC','Fully novel (no reference product)']},
+      question:'Please provide details of the reference / originator product.',
+      detail:'Enter product name, dosage form, dose/usage, and approval status. Used for BEQ strategy and comparative dissolution design.',
+      placeholder:'e.g. Ibuprofen tablet 200mg (Brand X), 1 tablet 3x/day after meals, approved in Japan. Or "Fully novel - no reference product"'},
+    {key:'medicalStrategy',
+      question:'What is the intended medical / clinical strategy?',
+      detail:'Describe the planned approach for BEQ (bioequivalence), clinical bridging, safety data package, or switch-specific clinical requirements.',
+      placeholder:'e.g. Comparative dissolution only (BEQ strategy), in vivo BE study not required. Or "No clinical data - literature evidence only"'},
     {key:'targetIndication',
       question:'What are the intended indications / claims?',
       detail:'Please enter the proposed therapeutic claims or indication.',
@@ -1044,8 +1100,8 @@ var STEPS_I18N = {
       question:'Sélectionnez les pays cibles pour la soumission (plusieurs choix possibles).',
       detail:'Nous adapterons les exigences réglementaires, la classification et le dossier par pays.'},
     {key:'drugType', type:'drugType',
-      question:'Quelle est la catégorie / classification réglementaire du produit ?',
-      detail:'Les options sont adaptées à vos marchés cibles sélectionnés.'},
+      question:'Quel est le type de procédure réglementaire / demande ?',
+      detail:'Options adaptées à vos pays cibles (Initial MA, Variation, Line Extension, Switch, Générique, etc.).'},
     {key:'dosageForm',
       question:'Quelle est la forme pharmaceutique ?',
       detail:'Influence la conception de la formulation et les spécifications.',
@@ -1065,11 +1121,15 @@ var STEPS_I18N = {
     {key:'nonCompendialAdditive', type:'multiselect',
       question:'Précisez les excipients non-pharmacopéiques.',
       detail:'Les colorants et arômes conformes aux normes alimentaires peuvent bénéficier d\'allégements documentaires.',
-      options:['Colorant (conforme aux normes additifs alimentaires)','Colorant (conformité inconnue)','Colorant (non conforme — grade pharmaceutique uniquement)','Arôme (conforme aux normes additifs alimentaires)','Arôme (conformité inconnue)','Arôme (non conforme — grade pharmaceutique uniquement)','Autre excipient non-pharmacopéique','Pas d\'excipient non-pharmacopéique / N/A']},
+      options:buildAdditiveOptions()},
     {key:'referenceProduct',
-      question:'Existe-t-il un produit de référence ou princeps ?',
-      detail:"Précisez s'il s'agit d'un switch OTC, d'une extension de gamme ou d'un générique.",
-      options:['Switch depuis Rx (autorisé nationalement)','Switch depuis OTC étranger (non autorisé nationalement)','Produit de suite / version améliorée d\'un OTC existant','Entièrement nouveau (pas de produit de référence)']},
+      question:'Veuillez détailler le produit de référence / princeps.',
+      detail:'Indiquez le nom, la forme pharmaceutique, la posologie et le statut d\'autorisation. Utilisé pour la stratégie BEQ et les tests de dissolution comparatifs.',
+      placeholder:"ex. Ibuprofène comprimé 200mg (Marque X), 1 cp 3x/jour après repas, autorisé en France. Ou 'Entièrement nouveau - pas de référence'"},
+    {key:'medicalStrategy',
+      question:'Quelle est la stratégie médicale / clinique envisagée ?',
+      detail:'Décrivez l\'approche prévue pour la BEQ (bioéquivalence), le bridging clinique, le package de sécurité ou les exigences cliniques spécifiques au switch.',
+      placeholder:"ex. Dissolution comparative uniquement (stratégie BEQ), étude BE in vivo non requise. Ou 'Pas de données cliniques - preuves bibliographiques uniquement'"},
     {key:'targetIndication',
       question:'Quelles sont les indications / allégations thérapeutiques envisagées ?',
       detail:'Saisissez les allégations thérapeutiques proposées ou l\'indication.',
@@ -1085,18 +1145,113 @@ function getSteps() { return STEPS_I18N[LANG] || STEPS_I18N.ja; }
 
 // ── Drug type options ─────────────────────────────────────
 var DRUG_TYPE_OPTS = {
-  JP:['第1類医薬品（スイッチOTC）','第2類医薬品','指定第2類医薬品','第3類医薬品','要指導医薬品（新スイッチ直後）'],
-  US:['OTC Monograph適合品（NDA不要）','NDA/ANDA申請品（Non-Monograph）','OTC Drug Facts対応品','Rx-to-OTC Switch'],
-  EU:['Non-prescription（OTC）','POM→OTC Switch','Pharmacist-only Medicine','Traditional Herbal（THR）'],
-  UK:['General Sales List（GSL）','Pharmacy（P）Medicine','POM Switch','Herbal / Homeopathic'],
-  CN:['甲類非処方薬（OTC-A）','乙類非処方薬（OTC-B）','Rx→スイッチ','伝統中薬（TCM）OTC'],
-  KR:['一般医薬品（일반의약품）','専門医薬品からのスイッチ','漢方OTC'],
-  TW:['指示薬（指示藥）','成薬（成藥）OTC','処方薬からのスイッチ'],
-  SG:['General Sale List（GSL）','Pharmacy Only（P）','POM Switch'],
-  AU:['Schedule 2（Pharmacy Medicine）','Schedule 3（Pharmacist Only）','Unscheduled / General Sale','Rx→OTC Switch'],
-  CA:['OTC（Self-selection）','Behind-the-Counter（BTC）','Natural Health Product（NHP）','Rx→OTC Switch'],
-  BR:['MIP（Medicamento Isento de Prescrição）','Rx→スイッチ（ANVISA）','Fitoterápico OTC'],
-  OTHER:['OTC（区分未定・国別確認要）','処方薬からのスイッチ','自由記述']
+  // JP: 申請区分 + 医薬品分類
+  JP:[
+    '新規承認申請（第2類・第3類 OTC 新規）',
+    '新規承認申請（要指導医薬品 → 第1類へ移行予定）',
+    'Rx-to-OTC スイッチ承認申請（要指導医薬品）',
+    '一部変更承認申請（Minor/Major Variation）',
+    '軽微変更届出（Minor Change Notification）',
+    '後発医薬品承認申請（OTC ジェネリック）',
+  ],
+  // EU: EMA / National CA 手続き種別
+  EU:[
+    'Initial Marketing Authorisation Application（新規MA申請） - Centralised Procedure (CP)',
+    'Initial MA Application - Mutual Recognition Procedure (MRP)',
+    'Initial MA Application - Decentralised Procedure (DCP)',
+    'Initial MA Application - National Procedure（単国申請）',
+    'Type IA Variation（軽微変更・届出）',
+    'Type IB Variation（軽微変更・事前通知）',
+    'Type II Variation（重要変更・承認申請）',
+    'Line Extension（剤形・用量追加申請）',
+    'Rx-to-OTC Switch（処方箋医薬品→OTC切替申請）',
+    'Traditional Herbal Registration（THR）',
+    'Well-established Use Application（既知使用実績）',
+  ],
+  // UK: MHRA 手続き種別（Brexit後）
+  UK:[
+    'New Marketing Authorisation (NMA) - National Procedure',
+    'New MA - Great Britain Reliance Procedure（EU MAに基づく）',
+    'Variation - Minor（Type IA/IB相当）',
+    'Variation - Major（Type II相当）',
+    'Line Extension',
+    'Rx-to-P or GSL Switch',
+    'Traditional Herbal Registration (THR)',
+  ],
+  // US: FDA 手続き種別
+  US:[
+    'OTC Monograph Conformance（モノグラフ適合品・申請不要）',
+    'OTC Monograph Order Request（モノグラフ改訂要求）',
+    'NDA（New Drug Application） - 505(b)(1)',
+    'NDA - 505(b)(2)（既存データ活用）',
+    'ANDA（Abbreviated NDA）- ジェネリック',
+    'Rx-to-OTC Switch（Reclassification） - NDA Supplement',
+    'CBE-30 / Prior Approval Supplement（承認後変更）',
+  ],
+  // CN: NMPA 手続き種別
+  CN:[
+    '化学薬品新薬申請（第1類 / 第2類）',
+    '化学薬品改良型新薬申請（第4類）',
+    '仿制薬（ジェネリック）申請（第5類）',
+    '補充申請（Supplemental Application）- 処方・製法変更等',
+    '年度報告（Minor Change Annual Report）',
+    'Rx→OTC スイッチ申請（甲類/乙類 転換）',
+    '伝統中薬（TCM）OTC 申請',
+  ],
+  // KR: MFDS 手続き種別
+  KR:[
+    '新約品目許可（신약 품목허가）',
+    '自料申請品目許可（자료제출 의약품）',
+    'ジェネリック品目許可（제네릭 품목허가）',
+    '品目変更許可（품목변경허가） - Major Variation',
+    '品目変更申告（품목변경신고） - Minor Variation',
+    '専門→一般医薬品 転換申請',
+  ],
+  // TW: TFDA 手続き種別
+  TW:[
+    '新薬査験登記（新薬許可証取得）',
+    '学名薬査験登記（ジェネリック許可証）',
+    '許可証変更申請（Major Variation）',
+    '許可証変更申報（Minor Variation）',
+    '処方薬→指示薬/成薬 転換申請',
+  ],
+  // SG: HSA 手続き種別
+  SG:[
+    'Full NDA / Full Generic Application',
+    'Abridged NDA（既承認品基準）',
+    'Verification NDA（EU/US/AU 承認品基準）',
+    'Post-approval Variation - Major',
+    'Post-approval Variation - Minor',
+    'Rx-to-OTC Reclassification',
+  ],
+  // AU: TGA 手続き種別
+  AU:[
+    'AUST R Registration（処方箋・高リスクOTC）- Full Application',
+    'AUST R Registration - Abridged / Literature-based',
+    'AUST L Listing（OTC低リスク品）- Electronic Listing',
+    'AUST L(A) Listed Medicine with Assessed Claims',
+    'Rx to Schedule 2/3 OTC Switch Application',
+    'Variation to Registered/Listed Medicine',
+  ],
+  // CA: Health Canada 手続き種別
+  CA:[
+    'New Drug Submission (NDS)',
+    'Abbreviated New Drug Submission (ANDS) - ジェネリック',
+    'Supplement to NDS/ANDS - Major Change',
+    'Notifiable Change（Minor Change）',
+    'Natural Health Product (NHP) - Product Licence',
+    'Rx-to-OTC Switch（Self-selection）',
+  ],
+  // BR: ANVISA 手続き種別
+  BR:[
+    '新薬登録申請（Registro de Novo Medicamento）',
+    'ジェネリック登録申請（Registro de Medicamento Genérico）',
+    'Similar Medicine 登録申請',
+    'Post-registration Variation（変更申請）',
+    'Isento de Prescrição (MIP) 登録',
+    'Fitoterápico（植物薬）登録申請',
+  ],
+  OTHER:['新規承認申請（Initial MA）','変更申請（Variation）','剤形追加（Line Extension）','ジェネリック申請','自由記述']
 };
 
 function buildDrugTypeOptions() {
@@ -1114,8 +1269,176 @@ function buildDrugTypeOptions() {
   return opts;
 }
 
+// ── Dynamic excipient standard options based on selected countries ──────────
+function buildAdditiveOptions() {
+  var codes = selectedCountries.map(function(c) { return c.code; });
+  var opts = [];
+  var hasJP = codes.indexOf('JP') >= 0;
+  var hasEU = codes.indexOf('EU') >= 0;
+  var hasUK = codes.indexOf('UK') >= 0;
+  var hasUS = codes.indexOf('US') >= 0;
+  var hasCN = codes.indexOf('CN') >= 0;
+  var hasKR = codes.indexOf('KR') >= 0;
+  var hasTW = codes.indexOf('TW') >= 0;
+  var hasAU = codes.indexOf('AU') >= 0;
+  var hasCA = codes.indexOf('CA') >= 0;
+
+  if (LANG === 'ja') {
+    if (hasJP) {
+      opts.push('【JP】色素：食品添加物公定書（食添規）適合 → 薬添規免除・毒性資料省略可');
+      opts.push('【JP】色素：食品添加物規格 適合不明・未確認');
+      opts.push('【JP】色素：食添規に非適合（医薬品専用規格）');
+      opts.push('【JP】香料：食品添加物公定書（食添規）適合 → 薬添規免除・毒性資料省略可');
+      opts.push('【JP】香料：食品添加物規格 適合不明・未確認');
+      opts.push('【JP】香料：食添規に非適合（医薬品専用規格）');
+    }
+    if (hasEU) {
+      opts.push('【EU】色素：Reg.(EC) No.1333/2008（食品添加物規則）適合');
+      opts.push('【EU】色素：Reg.(EC) No.1333/2008 適合不明・未確認');
+      opts.push('【EU】香料：Reg.(EC) No.1334/2008（食品香料規則）適合');
+      opts.push('【EU】香料：Reg.(EC) No.1334/2008 適合不明・未確認');
+    }
+    if (hasUK) {
+      opts.push('【UK】色素：UK Food Standards (FSA) / Retained EU Law 適合');
+      opts.push('【UK】香料：UK Flavourings in Food Regulations 2010 適合');
+    }
+    if (hasUS) {
+      opts.push('【US】色素：FDA認証色素（Certified Color Additive）または GRAS 適合');
+      opts.push('【US】色素：FDA IIG（Inactive Ingredient Guide）収載');
+      opts.push('【US】香料：FDA GRAS（Generally Recognized As Safe）適合');
+      opts.push('【US】香料：FDA IIG（Inactive Ingredient Guide）収載');
+    }
+    if (hasCN) {
+      opts.push('【CN】色素・香料：GB 2760（食品添加剤使用標準）適合');
+      opts.push('【CN】色素・香料：GB 2760 適合不明・未確認');
+    }
+    if (hasKR) {
+      opts.push('【KR】色素・香料：韓国食品添加物公典（식품첨가물공전）適合');
+    }
+    if (hasTW) {
+      opts.push('【TW】色素・香料：台湾食品添加物使用規範 適合');
+    }
+    if (hasAU) {
+      opts.push('【AU】色素・香料：FSANZ食品基準コード（Food Standards Code）適合');
+    }
+    if (hasCA) {
+      opts.push('【CA】色素・香料：Health Canada 食品添加物データベース収載');
+    }
+    opts.push('色素・香料以外の公定書外添加剤あり（全地域）');
+    opts.push('公定書外添加剤なし／該当なし');
+  } else if (LANG === 'en') {
+    if (hasJP) {
+      opts.push('[JP] Colorant: compliant with Japanese Food Additive Standards (食添規) → 薬添規 & toxicity data waivable');
+      opts.push('[JP] Colorant: food additive compliance unknown');
+      opts.push('[JP] Colorant: non-compliant (pharmaceutical-grade spec only)');
+      opts.push('[JP] Flavor: compliant with Japanese Food Additive Standards (食添規)');
+      opts.push('[JP] Flavor: food additive compliance unknown');
+      opts.push('[JP] Flavor: non-compliant (pharmaceutical-grade spec only)');
+    }
+    if (hasEU) {
+      opts.push('[EU] Colorant: compliant with Reg.(EC) No.1333/2008 (Food Additives Regulation)');
+      opts.push('[EU] Colorant: Reg.(EC) No.1333/2008 compliance unknown');
+      opts.push('[EU] Flavor: compliant with Reg.(EC) No.1334/2008 (Food Flavourings Regulation)');
+      opts.push('[EU] Flavor: Reg.(EC) No.1334/2008 compliance unknown');
+    }
+    if (hasUK) {
+      opts.push('[UK] Colorant: compliant with UK Food Standards (FSA) / Retained EU Law');
+      opts.push('[UK] Flavor: compliant with UK Flavourings in Food Regulations 2010');
+    }
+    if (hasUS) {
+      opts.push('[US] Colorant: FDA Certified Color Additive or GRAS');
+      opts.push('[US] Colorant: listed in FDA IIG (Inactive Ingredient Guide)');
+      opts.push('[US] Flavor: FDA GRAS (Generally Recognized As Safe)');
+      opts.push('[US] Flavor: listed in FDA IIG (Inactive Ingredient Guide)');
+    }
+    if (hasCN) {
+      opts.push('[CN] Colorant/Flavor: compliant with GB 2760 (Food Additive Use Standards)');
+      opts.push('[CN] Colorant/Flavor: GB 2760 compliance unknown');
+    }
+    if (hasKR) { opts.push('[KR] Colorant/Flavor: compliant with Korean Food Additives Code (식품첨가물공전)'); }
+    if (hasTW) { opts.push('[TW] Colorant/Flavor: compliant with Taiwan Food Additive Use Standards'); }
+    if (hasAU) { opts.push('[AU] Colorant/Flavor: compliant with FSANZ Food Standards Code'); }
+    if (hasCA) { opts.push('[CA] Colorant/Flavor: listed in Health Canada Food Additives Database'); }
+    opts.push('Other non-compendial excipient (not colorant/flavor)');
+    opts.push('No non-compendial excipients / N/A');
+  } else {
+    if (hasJP) {
+      opts.push('[JP] Colorant : conforme aux normes japonaises additifs alimentaires (食添規) → exemption 薬添規');
+      opts.push('[JP] Colorant : conformité inconnue');
+      opts.push('[JP] Arôme : conforme aux normes japonaises additifs alimentaires (食添規)');
+      opts.push('[JP] Arôme : conformité inconnue');
+    }
+    if (hasEU) {
+      opts.push('[EU] Colorant : conforme au Règl.(CE) n°1333/2008 (additifs alimentaires)');
+      opts.push('[EU] Colorant : conformité au Règl.1333/2008 inconnue');
+      opts.push('[EU] Arôme : conforme au Règl.(CE) n°1334/2008 (arômes alimentaires)');
+      opts.push('[EU] Arôme : conformité au Règl.1334/2008 inconnue');
+    }
+    if (hasUK) {
+      opts.push('[UK] Colorant/Arôme : conforme aux normes FSA / Loi UE retenue');
+    }
+    if (hasUS) {
+      opts.push('[US] Colorant : FDA Certified Color ou GRAS');
+      opts.push('[US] Arôme : FDA GRAS / IIG');
+    }
+    if (hasCN) { opts.push('[CN] Colorant/Arôme : conforme GB 2760'); }
+    opts.push('Autre excipient non-pharmacopéique');
+    opts.push("Pas d'excipient non-pharmacopéique / N/A");
+  }
+  return opts;
+}
+
 // ── UI helpers ────────────────────────────────────────────
 function sleep(ms) { return new Promise(function(r) { setTimeout(r, ms); }); }
+
+function showBackBtn(stepIdx) {
+  var btn = el('backBtn');
+  if (!btn) return;
+  // Show during question flow (not during report display)
+  btn.style.display = (stepIdx > 0 && stepIdx < TOTAL_STEPS) ? 'inline-flex' : 'none';
+}
+function hideBackBtn() {
+  var btn = el('backBtn');
+  if (btn) btn.style.display = 'none';
+}
+
+async function goBack() {
+  if (isLoading || stepHistory.length === 0) return;
+  var prev = stepHistory.pop();
+  // Remove the steps answer for current step
+  var steps = getSteps();
+  // currentStep is the step we just answered (or are on)
+  // We want to go back to prev.step - 1
+  var targetStep = prev.step - 1;
+  if (targetStep < 0) targetStep = 0;
+
+  // Restore state
+  var stateSnap = prev;
+  currentStep = targetStep;
+  
+  // Remove messages added after snapshot
+  var area = el('chatArea');
+  if (area) {
+    while (area.children.length > stateSnap.msgCount) {
+      area.removeChild(area.lastChild);
+    }
+  }
+  
+  // Delete answers for steps >= targetStep
+  for (var i = targetStep; i < steps.length; i++) {
+    delete answers[steps[i].key];
+  }
+  // Also reset selectedCountries if going back to step 0
+  if (targetStep === 0) {
+    selectedCountries = [];
+  }
+  
+  updateProgress();
+  isLoading = true;
+  addLoading(); await sleep(300); removeLoading();
+  isLoading = false;
+  await askStep(targetStep);
+}
 
 function el(id) { return document.getElementById(id); }
 
@@ -1203,6 +1526,14 @@ function setLang(lang) {
 
 // ── Step rendering ────────────────────────────────────────
 async function askStep(idx) {
+  // Push current state to history before rendering (so user can go back)
+  if (idx > 0) {
+    var msgCount = el('chatArea') ? el('chatArea').children.length : 0;
+    stepHistory.push({step: idx, msgCount: msgCount});
+    showBackBtn(idx);
+  } else {
+    hideBackBtn();
+  }
   var step = getSteps()[idx];
   var sep = LANG === 'ja' ? '：' : ': ';
   var header = '<strong>Q' + (idx+1) + '/' + TOTAL_STEPS + sep + step.question + '</strong><br>'
@@ -1338,10 +1669,32 @@ function renderDrugTypeStep(idx, step) {
 }
 
 async function renderMultiselectStep(idx, step, header) {
+  // For nonCompendialAdditive: adapt detail text based on target countries
+  if (step.key === 'nonCompendialAdditive') {
+    var codes = (answers.targetCountryCodes||'').split(',');
+    var jpIncluded = codes.indexOf('JP') >= 0;
+    var sep = LANG==='ja'?'：':': ';
+    var extraNote = '';
+    if (jpIncluded && codes.length > 1) {
+      extraNote = LANG==='ja'
+        ? ' ※食品添加物規格の特例はPMDA（日本）向けのみ適用。他国はIIG・IPEC等の地域規格を参照します。'
+        : LANG==='fr'
+        ? " ※L'exemption additifs alimentaires (日本) s'applique uniquement au Japon. Pour les autres pays, référence IIG/IPEC."
+        : ' ※Food additive exemption applies to Japan (PMDA) only. Other countries reference IIG, IPEC, or regional standards.';
+    } else if (!jpIncluded) {
+      extraNote = LANG==='ja'
+        ? ' ※選択国に日本が含まれないため、食品添加物規格の特例は適用されません。IIG（FDA）・IPEC（EU）等の地域規格を参照してください。'
+        : LANG==='fr'
+        ? " ※Le Japon n'est pas sélectionné. L'exemption additifs alimentaires ne s'applique pas. Référence IIG (FDA) / IPEC (EU)."
+        : ' ※Japan not selected. Food additive exemption does not apply. Reference IIG (FDA), IPEC (EU), or regional excipient standards.';
+    }
+    header = header.replace('</span>', extraNote + '</span>');
+  }
   var cs = answers.compendialStatus || '';
+  // Show non-compendial additive details if compendial status requires it
   var needsDetail = cs.includes('添加剤に公定書外') || cs.includes('ともに公定書外') || cs.includes('混在')
     || cs.includes('non-compendial') || cs.includes('non-pharmacopéique') || cs.includes('Mix')
-    || cs.includes('Excipient') || cs.includes('Both API');
+    || cs.includes('Excipient') || cs.includes('Both API') || cs.includes('Excipient(s) are');
   if (!needsDetail) {
     answers[step.key] = T('skipHint');
     currentStep++; updateProgress();
@@ -1363,13 +1716,15 @@ async function renderMultiselectStep(idx, step, header) {
     if (selected.length === 0) return;
     msConfirm.disabled = true;
     grid.querySelectorAll('.opt-btn').forEach(function(b) { b.style.pointerEvents = 'none'; });
-    answers[step.key] = selected.join('、');
+    answers[step.key] = selected.join(LANG==='ja'?'、':'; ');
     addMsg('user', answers[step.key]);
     currentStep++; updateProgress();
     addLoading(); await sleep(600); removeLoading();
     if (currentStep < TOTAL_STEPS) { await askStep(currentStep); } else { await generateReport(); }
   };
-  step.options.forEach(function(opt) {
+  // Refresh options dynamically for country-dependent steps
+  var stepOpts = (step.key === 'nonCompendialAdditive') ? buildAdditiveOptions() : (step.options || []);
+  stepOpts.forEach(function(opt) {
     var btn = document.createElement('button'); btn.className = 'opt-btn'; btn.textContent = opt;
     btn.onclick = function() {
       var i = selected.indexOf(opt);
@@ -1409,112 +1764,212 @@ async function sendMessage() {
 
 // ── Report generation ─────────────────────────────────────
 function buildPrompt() {
-  return 'OTC regulatory strategy report request:\n'
-    + 'Target countries: ' + (answers.targetCountries||'') + '\n'
-    + 'Product category: ' + (answers.drugType||'') + '\n'
+  var codes = (answers.targetCountryCodes||'').split(',');
+  var isJPincluded = codes.indexOf('JP') >= 0;
+  return '--- OTC Regulatory Strategy Request ---\n'
+    + 'Countries: ' + (answers.targetCountries||'') + '\n'
+    + 'Procedure type: ' + (answers.drugType||'') + '\n'
     + 'Dosage form: ' + (answers.dosageForm||'') + '\n'
-    + 'Active ingredients: ' + (answers.activeIngredients||'') + '\n'
+    + 'APIs: ' + (answers.activeIngredients||'') + '\n'
     + 'Novel ingredients: ' + (answers.novelIngredient||'') + '\n'
     + 'Compendial status: ' + (answers.compendialStatus||'') + '\n'
-    + 'Non-compendial additives: ' + (answers.nonCompendialAdditive||'N/A') + '\n'
+    + 'Non-compendial excipients: ' + (answers.nonCompendialAdditive||'N/A') + '\n'
     + 'Reference product: ' + (answers.referenceProduct||'') + '\n'
-    + 'Indications: ' + (answers.targetIndication||'') + '\n'
-    + 'Development stage: ' + (answers.developmentStage||'') + '\n\n'
-    + 'Please analyze and provide detailed OTC regulatory strategy.';
+    + 'Medical/clinical strategy: ' + (answers.medicalStrategy||'N/A') + '\n'
+    + 'Indication: ' + (answers.targetIndication||'') + '\n'
+    + 'Dev stage: ' + (answers.developmentStage||'') + '\n'
+    + (isJPincluded ? '[JP] Food additive standard exemption applies for JP only.\n' : '')
+    + 'Provide comprehensive regulatory strategy for all listed countries.';
 }
 
 var REPORT_SYSTEM = 'You are an international OTC pharmaceutical regulatory expert AI. LANG_INSTRUCTION\n'
-  + 'Analyze the provided formulation information and return a JSON regulatory strategy report. Return JSON only, no markdown code blocks.\n'
-  + '{\n'
-  + '  "regulatory_pathway": {\n'
-  + '    "countries": [{"country":"","authority":"","classification":"","application_type":"","review_timeline":"","key_risks":[]}],\n'
-  + '    "strategy_summary": ""\n'
-  + '  },\n'
-  + '  "required_documents": {\n'
-  + '    "common": [{"category":"","items":[],"priority":"mandatory/recommended/conditional","notes":""}],\n'
-  + '    "country_specific": [{"country":"","items":[],"notes":""}]\n'
-  + '  },\n'
-  + '  "specifications": {\n'
-  + '    "api_specs": [{"name":"","method":"","criterion":"","notes":""}],\n'
-  + '    "product_specs": [{"name":"","method":"","criterion":"","notes":""}],\n'
-  + '    "stability": {"conditions":[],"duration":"","notes":""}\n'
-  + '  },\n'
-  + '  "cpp": [{"parameter":"","target":"","justification":"","risk_level":"high/medium/low"}],\n'
-  + '  "novel_ingredient_requirements": null,\n'
-  + '  "compendial_requirements": null,\n'
-  + '  "regulatory_differences": [{"topic":"","details":""}],\n'
-  + '  "timeline": [{"phase":"","duration":"","key_tasks":[]}],\n'
-  + '  "additional_notes": ""\n'
-  + '}\n'
-  + 'For novel_ingredient_requirements: include only if novel ingredients present. Include toxicology/safety data requirements.\n'
-  + 'For compendial_requirements: include only if non-compendial ingredients present. If colorant/flavor complies with food additive standards, note that Pharmaceutical Excipients standards and toxicity data may not be required, but food additive compliance certificate is needed.\n'
-  + 'For regulatory_differences: include dosage limits, labeling, contraindications, language requirements etc.';
+  + 'Based on the formulation info provided, return a comprehensive JSON regulatory strategy report.\n'
+  + 'CRITICAL INSTRUCTION: Your ENTIRE response must be a single valid JSON object. Do NOT use markdown code fences (no ```json, no ```). Do NOT add any text before or after the JSON. Start your response with { and end with }.\n'
+  + 'JSON structure:\n'
+  + '{"regulatory_pathway":{"countries":[{"country":"","authority":"","classification":"","application_type":"","review_timeline":"","key_risks":[]}],"strategy_summary":""},'
+  + '"required_documents":{"common":[{"category":"","items":[],"priority":"mandatory","notes":""}],"country_specific":[{"country":"","items":[],"notes":""}]},'
+  + '"specifications":{"api_specs":[{"name":"","method":"","criterion":"","notes":""}],"product_specs":[{"name":"","method":"","criterion":"","notes":""}],"stability":{"conditions":[],"duration":"","notes":""}},'
+  + '"cpp":[{"parameter":"","target":"","justification":"","risk_level":"high"}],'
+  + '"novel_ingredient_requirements":null,'
+  + '"compendial_requirements":null,'
+  + '"medical_strategy":{"beq_strategy":"","clinical_requirements":[{"country":"","requirement":"","rationale":""}],"safety_data_package":[],"switch_considerations":"","biowaiver_possibility":""},'
+  + '"regulatory_differences":[{"topic":"","details":""}],'
+  + '"timeline":[{"phase":"","duration":"","key_tasks":[]}],'
+  + '"additional_notes":""}\n'
+  + 'Rules:\n'
+  + '- novel_ingredient_requirements: include detailed object only if novel ingredients present, else null\n'
+  + '- compendial_requirements: include only if non-compendial excipients present, else null. For JP: food additive standards (食添規) compliance exempts 薬添規 and toxicity data. For EU: Reg.1333/2008 (colorants) and 1334/2008 (flavors). For US: FDA GRAS/IIG. Note: Japanese food additive exemption does NOT apply to non-JP countries.\n'
+  + '- medical_strategy: base BEQ strategy on reference product details. Assess BCS biowaiver eligibility.\n'
+  + '- application_type: use the exact regulatory procedure type selected by user (e.g. Initial MA via DCP, Type II Variation, NDA 505(b)(2), etc.)\n'
+  + '- Be comprehensive. Fill all fields with substantive content.';
 
-var CHECKLIST_SYSTEM = 'You are an international OTC pharmaceutical regulatory expert AI. LANG_INSTRUCTION\n'
-  + 'Based on the formulation information provided, return a detailed task checklist as JSON only. No markdown code blocks.\n'
-  + '{\n'
-  + '  "checklist": [\n'
-  + '    {\n'
-  + '      "phase": "phase name",\n'
-  + '      "color": "accent|warn|green|red",\n'
-  + '      "items": [\n'
-  + '        {\n'
-  + '          "text": "specific task (verb+object, one sentence)",\n'
-  + '          "priority": "mandatory|recommended|conditional",\n'
-  + '          "owner": "department or role",\n'
-  + '          "deadline_hint": "relative deadline within phase",\n'
-  + '          "deliverable": "output document or artifact",\n'
-  + '          "note": "supplementary note or null"\n'
-  + '        }\n'
-  + '      ]\n'
-  + '    }\n'
-  + '  ]\n'
-  + '}\n'
-  + 'Set 7-9 phases in chronological order. Each phase: 5-10 tasks. Customize based on target countries, dosage form, novel ingredients, non-compendial excipients, development stage. Add toxicology tasks if novel ingredients. Add food compliance certificate task if colorant/flavor compliant with food standards. Add country-specific tasks if multiple countries.';
+var CHECKLIST_SYSTEM = 'You are an OTC pharmaceutical regulatory expert. LANG_INSTRUCTION\n'
+  + 'CRITICAL: Respond with ONLY a raw JSON object. No markdown (no ```). Start with { end with }.\n'
+  + 'Required format:\n'
+  + '{"checklist":[{"phase":"Phase name","color":"accent","items":[{"text":"Task description","priority":"mandatory","owner":"Dept","deadline_hint":"When","deliverable":"Output doc","note":null}]}]}\n'
+  + 'color values: accent, warn, green, red\n'
+  + 'priority values: mandatory, recommended, conditional\n'
+  + 'Create 7-9 phases in chronological order. Each phase 5-8 tasks.\n'
+  + 'Customize for the target countries, dosage form, novel ingredients, compendial status, and development stage provided.';
 
 async function generateReport() {
-  addMsg('ai', T('genMsg') + ' <span class="typing-cursor"></span>');
-  addLoading();
+  hideBackBtn();
   el('inputWrap').style.display = 'none';
+
+  // ── Status overlay (always visible regardless of scroll) ──
+  var overlay = document.createElement('div');
+  overlay.id = 'genOverlay';
+  overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(10,14,26,0.92);z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;';
+  overlay.innerHTML = '<div style="width:48px;height:48px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.8s linear infinite;"></div>'
+    + '<div id="genStatus" style="font-family:Space Mono,monospace;font-size:12px;color:var(--accent);letter-spacing:2px;">GENERATING REPORT...</div>'
+    + '<div id="genDetail" style="font-size:12px;color:var(--text-muted);max-width:400px;text-align:center;line-height:1.6;"></div>';
+  document.body.appendChild(overlay);
+
+  // Add spin keyframe if not present
+  if (!document.getElementById('spinStyle')) {
+    var st = document.createElement('style');
+    st.id = 'spinStyle';
+    st.textContent = '@keyframes spin{to{transform:rotate(360deg)}}';
+    document.head.appendChild(st);
+  }
+
+  function setStatus(msg, detail) {
+    var s = document.getElementById('genStatus'); if (s) s.textContent = msg;
+    var d = document.getElementById('genDetail'); if (d) d.textContent = detail || '';
+  }
+  function removeOverlay() {
+    var o = document.getElementById('genOverlay'); if (o) o.remove();
+  }
+
   var prompt = buildPrompt();
   var sysLang = T('systemLang');
+
+  // ── Report API call ──────────────────────────────────
+  // ── Parallel API calls with retry ───────────────────
+  setStatus('GENERATING...', '薬事戦略レポートとチェックリストを同時生成中...');
+  var reportText = '';
+  var checklistText = '{"checklist":[]}';
   try {
     var results = await Promise.all([
       apiCall(REPORT_SYSTEM.replace('LANG_INSTRUCTION', sysLang), prompt),
       apiCall(CHECKLIST_SYSTEM.replace('LANG_INSTRUCTION', sysLang), prompt)
     ]);
-    removeLoading();
-    try { renderReport(JSON.parse(cleanJson(results[0]))); } catch(e) { renderRawReport(results[0]); }
-    try {
-      var cl = JSON.parse(cleanJson(results[1]));
-      renderChecklist(cl.checklist || []);
-    } catch(e) {
-      el('checklistArea').innerHTML = '<div style="padding:20px;color:var(--text-muted);">' + T('clFailed') + '</div>';
-    }
-    el('tabBar').classList.add('visible');
+    reportText = results[0];
+    checklistText = results[1] || '{"checklist":[]}';
   } catch(e) {
-    removeLoading();
-    addMsg('ai', '<span style="color:var(--danger)">' + T('errorMsg') + '</span>');
+    removeOverlay();
+    addMsg('ai', '<div style="background:rgba(255,50,50,0.15);border:1px solid #ff4466;border-radius:8px;padding:16px;">'
+      + '<div style="color:#ff6688;font-weight:500;margin-bottom:8px;">⚠ レポート生成エラー</div>'
+      + '<div style="font-family:monospace;font-size:12px;color:#ffaaaa;word-break:break-all;">' + e.message + '</div>'
+      + '<div style="font-size:11px;color:#ff8888;margin-top:8px;">しばらく待ってから再試行してください（502はサーバー一時エラーです）。</div></div>');
     el('inputWrap').style.display = 'flex';
+    return;
   }
+
+  removeOverlay();
+
+  // ── Render report ────────────────────────────────────
+  if (!reportText || !reportText.trim()) {
+    addMsg('ai', '<div style="background:rgba(255,50,50,0.15);border:1px solid #ff4466;border-radius:8px;padding:16px;color:#ff6688;">⚠ APIから空のレスポンスが返りました。再試行してください。</div>');
+    el('inputWrap').style.display = 'flex';
+    return;
+  }
+  try {
+    renderReport(JSON.parse(cleanJson(reportText)));
+  } catch(e) {
+    var preview = reportText.substring(0, 400).replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    addMsg('ai', '<div style="background:rgba(255,170,0,0.08);border:1px solid #ffaa00;border-radius:8px;padding:12px;margin-bottom:8px;">'
+      + '<div style="font-size:12px;color:#ffcc66;margin-bottom:6px;">⚠ JSON解析失敗 — テキスト表示にフォールバック</div>'
+      + '<div style="font-family:monospace;font-size:10px;color:var(--text-muted);background:var(--surface2);padding:8px;border-radius:4px;white-space:pre-wrap;overflow-x:auto;">' + preview + '</div></div>');
+    renderRawReport(reportText);
+  }
+
+  // ── Render checklist ─────────────────────────────────
+  try {
+    var clCleaned = cleanJson(checklistText);
+    var clParsed = JSON.parse(clCleaned);
+    // Handle various structures the API might return
+    var phases = clParsed.checklist || clParsed.phases || clParsed.items || clParsed.tasks || [];
+    // If it's an array directly
+    if (Array.isArray(clParsed)) phases = clParsed;
+    // If phases is array of strings or flat items, wrap them
+    if (phases.length > 0 && typeof phases[0] === 'string') {
+      phases = [{phase: 'Tasks', color: 'accent', items: phases.map(function(t) { return {text:t, priority:'mandatory', owner:'', deadline_hint:'', deliverable:'', note:null}; })}];
+    }
+    renderChecklist(phases);
+  } catch(e) {
+    // Show raw checklist text for debugging
+    var preview = (checklistText||'').substring(0, 500).replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    el('checklistArea').innerHTML = '<div style="padding:16px;">'
+      + '<div style="color:var(--warn);font-size:12px;margin-bottom:8px;">⚠ チェックリストのパース失敗: ' + e.message + '</div>'
+      + '<pre style="font-size:10px;color:var(--text-muted);background:var(--surface2);padding:8px;border-radius:4px;overflow-x:auto;white-space:pre-wrap;">' + preview + '</pre>'
+      + '</div>';
+  }
+
+  addMsg('ai', T('doneMsg'));
+  el('chatArea').scrollTop = el('chatArea').scrollHeight;
+  el('tabBar').classList.add('visible');
 }
 
-async function apiCall(system, prompt) {
-  var res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 4000,
-      system: system,
-      messages: [{role:'user', content:prompt}]
-    })
-  });
-  var data = await res.json();
-  return data.content.map(function(i) { return i.text || ''; }).join('');
+
+async function apiCall(system, prompt, retries) {
+  retries = retries || 0;
+  var res;
+  try {
+    res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 6000,
+        system: system,
+        messages: [{role:'user', content:prompt}]
+      })
+    });
+  } catch(fetchErr) {
+    if (retries < 2) {
+      await sleep(2000);
+      return apiCall(system, prompt, retries + 1);
+    }
+    throw new Error('ネットワークエラー: ' + fetchErr.message);
+  }
+  // Retry on 502/503/529
+  if ((res.status === 502 || res.status === 503 || res.status === 529) && retries < 2) {
+    await sleep(3000 * (retries + 1));
+    return apiCall(system, prompt, retries + 1);
+  }
+  if (!res.ok) {
+    var errBody = '';
+    try { errBody = await res.text(); } catch(e) {}
+    throw new Error('HTTP ' + res.status + ' ' + res.statusText + (errBody ? ': ' + errBody.substring(0,200) : ''));
+  }
+  var data;
+  try { data = await res.json(); } catch(e) {
+    throw new Error('レスポンスのJSON解析失敗: ' + e.message);
+  }
+  if (data.error) {
+    throw new Error('API error [' + data.error.type + ']: ' + data.error.message);
+  }
+  if (!data.content || !Array.isArray(data.content) || data.content.length === 0) {
+    throw new Error('空のレスポンス (stop_reason=' + data.stop_reason + ')');
+  }
+  return data.content.map(function(i) { return i.type === 'text' ? i.text : ''; }).join('');
 }
 
-function cleanJson(s) { return s.replace(/```json|```/g,'').trim(); }
+function cleanJson(s) {
+  if (!s) return '{}';
+  // Remove all markdown code fences
+  s = s.replace(/```json/gi, '').replace(/```/g, '').trim();
+  // Remove common preamble patterns
+  s = s.replace(/^[^{[]*/, '').trim();
+  // Find outermost { ... }
+  var start = s.indexOf('{');
+  var end = s.lastIndexOf('}');
+  if (start >= 0 && end > start) {
+    s = s.substring(start, end + 1);
+  }
+  return s;
+}
 
 // ── Render report ─────────────────────────────────────────
 function renderReport(r) {
@@ -1631,7 +2086,7 @@ function renderReport(r) {
     var h6 = '<div class="result-section"><h4>📖 ' + (LANG==='ja'?'公定書外原料 規格設定要件':LANG==='fr'?'Exigences non-pharmacopéiques':'Non-Compendial Requirements') + '</h4>'
       + '<div class="warn-box">' + (LANG==='ja'?'公定書外原料が含まれるため、独自規格の設定が必要です。':LANG==='fr'?'Des substances non-pharmacopéiques nécessitent des spécifications internes.':'Non-compendial ingredients require in-house specifications.') + '</div>';
     if (cr['対象規格書']) h6 += '<div style="margin-bottom:10px;">' + cr['対象規格書'].map(function(s) { return '<span class="tag tag-blue">' + s + '</span>'; }).join('') + '</div>';
-    if (cr['色素_香料_特記']) h6 += '<div style="margin-bottom:12px;padding:10px 14px;background:rgba(0,255,153,0.07);border:1px solid rgba(0,255,153,0.25);border-radius:8px;"><div style="font-size:11px;font-family:\'Space Mono\',monospace;color:var(--accent3);margin-bottom:6px;">🎨 ' + (LANG==='ja'?'色素・香料 食品基準適合の特例':'Colorant/Flavor — Food Standard Exemption') + '</div><div style="font-size:13px;line-height:1.7;">' + cr['色素_香料_特記'] + '</div></div>';
+    if (cr['色素_香料_特記']) h6 += '<div style="margin-bottom:12px;padding:10px 14px;background:rgba(0,255,153,0.07);border:1px solid rgba(0,255,153,0.25);border-radius:8px;"><div style="font-size:11px;font-family:Space Mono,monospace;color:var(--accent3);margin-bottom:6px;">🎨 ' + (LANG==='ja'?'色素・香料 食品基準適合の特例':'Colorant/Flavor — Food Standard Exemption') + '</div><div style="font-size:13px;line-height:1.7;">' + cr['色素_香料_特記'] + '</div></div>';
     if (cr['規格設定']) cr['規格設定'].forEach(function(i) { h6 += '<div class="result-item"><span>' + i + '</span></div>'; });
     if (cr['注意事項']) h6 += '<div class="highlight">' + cr['注意事項'] + '</div>';
     Object.entries(cr).forEach(function(e) {
@@ -1667,7 +2122,29 @@ function renderReport(r) {
     body.innerHTML += h8;
   }
 
-  // 9. Notes
+  // 9. Medical Strategy
+  if (r.medical_strategy) {
+    var ms = r.medical_strategy;
+    var h9 = '<div class="result-section"><h4>💊 ' + (LANG==='ja'?'メディカル・クリニカル戦略':LANG==='fr'?'Stratégie médicale / clinique':'Medical & Clinical Strategy') + '</h4>';
+    if (ms.beq_strategy) h9 += '<div style="margin-bottom:12px;padding:12px;background:rgba(0,255,153,0.06);border:1px solid rgba(0,255,153,0.2);border-radius:8px;"><div style="font-size:11px;font-family:Space Mono,monospace;color:var(--accent3);margin-bottom:6px;">⚗ BEQ / ' + (LANG==='ja'?'生物学的同等性戦略':'Bioequivalence Strategy') + '</div><div style="font-size:13px;line-height:1.7;">' + ms.beq_strategy + '</div></div>';
+    if (ms.biowaiver_possibility) h9 += '<div style="margin-bottom:10px;padding:10px 12px;background:rgba(0,102,255,0.07);border-radius:8px;border:1px solid rgba(0,102,255,0.2);"><div style="font-size:11px;font-family:Space Mono,monospace;color:var(--accent);margin-bottom:4px;">BCS BIOWAIVER</div><div style="font-size:13px;line-height:1.7;">' + ms.biowaiver_possibility + '</div></div>';
+    if (ms.clinical_requirements && ms.clinical_requirements.length) {
+      h9 += '<div style="margin-bottom:8px;font-size:12px;color:var(--text-muted);">── ' + (LANG==='ja'?'各国臨床要件':'Clinical Requirements by Country') + ' ──</div>';
+      ms.clinical_requirements.forEach(function(cr) {
+        h9 += '<div style="margin-bottom:8px;padding:10px 12px;background:var(--surface2);border-radius:8px;border:1px solid var(--border);"><strong style="color:var(--accent);">' + cr.country + '</strong><div style="font-size:13px;margin-top:4px;">' + cr.requirement + '</div>' + (cr.rationale ? '<div style="font-size:12px;color:var(--text-muted);margin-top:3px;">' + cr.rationale + '</div>' : '') + '</div>';
+      });
+    }
+    if (ms.safety_data_package && ms.safety_data_package.length) {
+      h9 += '<div style="margin-top:8px;"><div style="font-size:12px;color:var(--text-muted);margin-bottom:6px;">── ' + (LANG==='ja'?'安全性データパッケージ':'Safety Data Package') + ' ──</div>';
+      ms.safety_data_package.forEach(function(item) { h9 += '<div class="result-item"><span>' + item + '</span></div>'; });
+      h9 += '</div>';
+    }
+    if (ms.switch_considerations) h9 += '<div class="highlight" style="margin-top:10px;">' + ms.switch_considerations + '</div>';
+    h9 += '</div>';
+    body.innerHTML += h9;
+  }
+
+  // 10. Notes
   if (r.additional_notes) {
     body.innerHTML += '<div class="result-section"><h4>' + (LANG==='ja'?'特記事項':LANG==='fr'?'Notes additionnelles':'Additional Notes') + '</h4><div class="highlight">' + r.additional_notes + '</div></div>';
   }
@@ -1819,15 +2296,18 @@ function setClFilter(filter, btn) {
 }
 
 function switchTab(tab) {
-  el('panelReport').classList.toggle('active', tab==='report');
-  el('panelChecklist').classList.toggle('active', tab==='checklist');
-  el('tabReport').classList.toggle('active', tab==='report');
-  el('tabChecklist').classList.toggle('active', tab==='checklist');
+  var pr = el('panelReport');
+  var pc = el('panelChecklist');
+  if (pr) { pr.style.display = tab==='report' ? 'block' : 'none'; pr.classList.toggle('active', tab==='report'); }
+  if (pc) { pc.style.display = tab==='checklist' ? 'block' : 'none'; pc.classList.toggle('active', tab==='checklist'); }
+  var tr = el('tabReport'); var tc = el('tabChecklist');
+  if (tr) tr.classList.toggle('active', tab==='report');
+  if (tc) tc.classList.toggle('active', tab==='checklist');
 }
 
 // ── Reset & init ──────────────────────────────────────────
 function resetAll() {
-  currentStep = 0; answers = {}; selectedCountries = []; _clData = []; _clChecked = {};
+  currentStep = 0; answers = {}; selectedCountries = []; _clData = []; _clChecked = {}; stepHistory = [];
   el('chatArea').innerHTML = '';
   el('checklistArea').innerHTML = '';
   el('inputWrap').style.display = 'flex';
@@ -1846,8 +2326,14 @@ function startConversation() {
 }
 
 // Init
+switchTab('report');
 updateProgress();
 startConversation();
+
+
+
+
+
 
 </script>
 </body>
