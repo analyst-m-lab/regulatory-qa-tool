@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+python-dotenv
+anthropic
+langchain
+langchain-anthropic
+langchain-community
+langchain-huggingface
+langchain-text-splitters
+faiss-cpu
+sentence-transformers
+pydantic
+python-multipart
