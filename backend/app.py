@@ -14,7 +14,7 @@ async def lifespan(app: FastAPI):
     # スタートアップ
     api_key = os.getenv("ANTHROPIC_API_KEY")
     data_folder = os.getenv("DATA_FOLDER", "../data")
-    embedding_model = os.getenv("EMBEDDING_MODEL", "sentence-transformers/multilingual-e5-large")
+    embedding_model = os.getenv("EMBEDDING_MODEL", "intfloat/multilingual-e5-small")
 
     print(f"初期化開始...")
     print(f"   API Key: {'設定済み' if api_key else '未設定'}")

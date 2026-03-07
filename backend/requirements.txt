@@ -5,9 +5,7 @@ anthropic
 langchain
 langchain-anthropic
 langchain-community
-langchain-huggingface
-langchain-text-splitters
-faiss-cpu
-sentence-transformers
+langchain-core
+rank-bm25
 pydantic
 python-multipart

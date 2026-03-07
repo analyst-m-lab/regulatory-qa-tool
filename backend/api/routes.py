@@ -10,9 +10,9 @@ class QueryRequest(BaseModel):
 @router.post("/query")
 async def query_document(req: QueryRequest, request: Request):
     """ナレッジベースから検索して回答"""
-    rag_chain = request.app.state.rag_chain
+    rag_chain = getattr(request.app.state, "rag_chain", None)
 
-    if not rag_chain:
+    if not rag_chain or not rag_chain.retriever:
         raise HTTPException(status_code=503, detail="RAGチェーン未初期化")
 
     result = await rag_chain.query(req.question)
@@ -21,7 +21,7 @@ async def query_document(req: QueryRequest, request: Request):
 @router.get("/status")
 async def status(request: Request):
     """サーバーステータス確認"""
-    rag_chain = request.app.state.rag_chain
+    rag_chain = getattr(request.app.state, "rag_chain", None)
 
     return {
         "status": "ok",

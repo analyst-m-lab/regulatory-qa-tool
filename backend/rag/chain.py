@@ -1,82 +1,82 @@
+import traceback
 from pathlib import Path
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_anthropic import ChatAnthropic
-from langchain_community.vectorstores import FAISS
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_core.documents import Document
+from rank_bm25 import BM25Okapi
+
+
+class BM25Retriever:
+    """オフライン対応のBM25キーワード検索リトリーバー"""
+
+    def __init__(self, documents: list, k: int = 5):
+        self.documents = documents
+        self.k = k
+        tokenized = [doc.page_content.split() for doc in documents]
+        self.bm25 = BM25Okapi(tokenized)
+
+    async def ainvoke(self, query: str) -> list:
+        tokenized_query = query.split()
+        scores = self.bm25.get_scores(tokenized_query)
+        top_indices = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)[:self.k]
+        return [self.documents[i] for i in top_indices]
+
 
 class RAGChain:
     def __init__(self, data_folder: str, embedding_model: str, api_key: str):
         self.data_folder = data_folder
         self.api_key = api_key
-        self.embeddings = HuggingFaceEmbeddings(model_name=embedding_model)
-        self.vector_store = None
         self.retriever = None
         self.llm = None
-    
+
     async def initialize(self):
-        """ベクターストアの初期化"""
+        """BM25リトリーバーとLLMの初期化"""
         try:
-            # 1. データロード
             documents = self._load_documents()
-            print(f"📄 ロードしたドキュメント数: {len(documents)}")
-            
+            print(f"ロードしたドキュメント数: {len(documents)}")
+
             if len(documents) == 0:
-                print("⚠️ ドキュメントが見つかりません")
+                print("ドキュメントが見つかりません")
                 return
-            
-            # 2. テキスト分割
-            text_splitter = RecursiveCharacterTextSplitter(
-                chunk_size=1000,
-                chunk_overlap=200,
-                separators=["\n\n", "\n", "。", "、", " ", ""]
-            )
-            splits = text_splitter.split_documents(documents)
-            print(f"✂️ 分割したチャンク数: {len(splits)}")
-            
-            # 3. ベクター化＆ストア作成
-            self.vector_store = FAISS.from_documents(splits, self.embeddings)
-            self.retriever = self.vector_store.as_retriever(search_kwargs={"k": 5})
-            
-            # 4. LLM初期化
+
+            self.retriever = BM25Retriever(documents, k=5)
+
             self.llm = ChatAnthropic(
                 api_key=self.api_key,
                 model="claude-sonnet-4-6",
                 temperature=0.7
             )
-            
-            print("✅ RAGチェーン初期化完了")
-            
+
+            print("RAGチェーン初期化完了")
+
         except Exception as e:
-            print(f"❌ 初期化エラー: {e}")
-            import traceback
+            print(f"初期化エラー: {e}")
             traceback.print_exc()
-    
+
     def _load_documents(self):
         """dataフォルダからテキストファイルをロード"""
         documents = []
         data_path = Path(self.data_folder)
-        
+
         if not data_path.exists():
-            print(f"⚠️ {self.data_folder} が見つかりません")
+            print(f"{self.data_folder} が見つかりません")
             return documents
-        
+
         for file_path in data_path.glob("**/*.txt"):
             try:
                 with open(file_path, "r", encoding="utf-8") as f:
                     content = f.read()
-                    documents.append(
-                        Document(
-                            page_content=content,
-                            metadata={"source": str(file_path), "filename": file_path.name}
-                        )
+                documents.append(
+                    Document(
+                        page_content=content,
+                        metadata={"source": str(file_path), "filename": file_path.name}
                     )
-                print(f"✓ {file_path.name} をロード")
+                )
+                print(f"ロード: {file_path.name}")
             except Exception as e:
-                print(f"⚠️ {file_path} の読み込みエラー: {e}")
-        
+                print(f"読み込みエラー {file_path}: {e}")
+
         return documents
-    
+
     async def query(self, question: str) -> dict:
         """RAGによる質問応答"""
         if not self.retriever or not self.llm:
@@ -85,15 +85,12 @@ class RAGChain:
                 "sources": [],
                 "success": False
             }
-        
+
         try:
-            # 関連ドキュメントを検索
-            docs = self.retriever.invoke(question)
-            
-            # コンテキスト作成
-            context = "\n".join([doc.page_content for doc in docs])
-            
-            # プロンプト作成
+            docs = await self.retriever.ainvoke(question)
+
+            context = "\n\n".join([doc.page_content for doc in docs])
+
             prompt = f"""以下の参考資料に基づいて、質問に答えてください。
 
 参考資料:
@@ -102,10 +99,9 @@ class RAGChain:
 質問: {question}
 
 回答:"""
-            
-            # LLMで回答生成
+
             result = await self.llm.ainvoke(prompt)
-            
+
             return {
                 "answer": result.content,
                 "sources": [doc.metadata for doc in docs],
