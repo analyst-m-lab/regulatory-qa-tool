@@ -25,5 +25,5 @@ async def status(request: Request):
 
     return {
         "status": "ok",
-        "rag_initialized": rag_chain is not None and rag_chain.qa_chain is not None
+        "rag_initialized": rag_chain is not None and rag_chain.retriever is not None and rag_chain.llm is not None
     }
