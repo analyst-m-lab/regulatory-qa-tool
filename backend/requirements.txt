@@ -1,9 +1,9 @@
 fastapi
 uvicorn
 python-dotenv
-anthropic
+google-generativeai
 langchain
-langchain-anthropic
+langchain-google-genai
 langchain-community
 langchain-core
 rank-bm25

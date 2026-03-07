@@ -1,6 +1,6 @@
 import traceback
 from pathlib import Path
-from langchain_anthropic import ChatAnthropic
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.documents import Document
 from rank_bm25 import BM25Okapi
 
@@ -22,7 +22,7 @@ class BM25Retriever:
 
 
 class RAGChain:
-    def __init__(self, data_folder: str, embedding_model: str, api_key: str):
+    def __init__(self, data_folder: str, api_key: str):
         self.data_folder = data_folder
         self.api_key = api_key
         self.retriever = None
@@ -40,9 +40,9 @@ class RAGChain:
 
             self.retriever = BM25Retriever(documents, k=5)
 
-            self.llm = ChatAnthropic(
-                api_key=self.api_key,
-                model="claude-sonnet-4-6",
+            self.llm = ChatGoogleGenerativeAI(
+                model="gemini-1.5-flash",
+                google_api_key=self.api_key,
                 temperature=0.7
             )
 
