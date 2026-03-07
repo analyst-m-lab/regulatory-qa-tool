@@ -1152,7 +1152,7 @@ var DRUG_TYPE_OPTS = {
     'Rx-to-OTC スイッチ承認申請（要指導医薬品）',
     '一部変更承認申請（Minor/Major Variation）',
     '軽微変更届出（Minor Change Notification）',
-    '後発医薬品承認申請（OTC ジェネリック）',
+    '後発医薬品承認申請（OTC ジェネリック）'
   ],
   // EU: EMA / National CA 手続き種別
   EU:[
@@ -1166,7 +1166,7 @@ var DRUG_TYPE_OPTS = {
     'Line Extension（剤形・用量追加申請）',
     'Rx-to-OTC Switch（処方箋医薬品→OTC切替申請）',
     'Traditional Herbal Registration（THR）',
-    'Well-established Use Application（既知使用実績）',
+    'Well-established Use Application（既知使用実績）'
   ],
   // UK: MHRA 手続き種別（Brexit後）
   UK:[
@@ -1176,7 +1176,7 @@ var DRUG_TYPE_OPTS = {
     'Variation - Major（Type II相当）',
     'Line Extension',
     'Rx-to-P or GSL Switch',
-    'Traditional Herbal Registration (THR)',
+    'Traditional Herbal Registration (THR)'
   ],
   // US: FDA 手続き種別
   US:[
@@ -1186,7 +1186,7 @@ var DRUG_TYPE_OPTS = {
     'NDA - 505(b)(2)（既存データ活用）',
     'ANDA（Abbreviated NDA）- ジェネリック',
     'Rx-to-OTC Switch（Reclassification） - NDA Supplement',
-    'CBE-30 / Prior Approval Supplement（承認後変更）',
+    'CBE-30 / Prior Approval Supplement（承認後変更）'
   ],
   // CN: NMPA 手続き種別
   CN:[
@@ -1196,7 +1196,7 @@ var DRUG_TYPE_OPTS = {
     '補充申請（Supplemental Application）- 処方・製法変更等',
     '年度報告（Minor Change Annual Report）',
     'Rx→OTC スイッチ申請（甲類/乙類 転換）',
-    '伝統中薬（TCM）OTC 申請',
+    '伝統中薬（TCM）OTC 申請'
   ],
   // KR: MFDS 手続き種別
   KR:[
@@ -1205,7 +1205,7 @@ var DRUG_TYPE_OPTS = {
     'ジェネリック品目許可（제네릭 품목허가）',
     '品目変更許可（품목변경허가） - Major Variation',
     '品目変更申告（품목변경신고） - Minor Variation',
-    '専門→一般医薬品 転換申請',
+    '専門→一般医薬品 転換申請'
   ],
   // TW: TFDA 手続き種別
   TW:[
@@ -1213,7 +1213,7 @@ var DRUG_TYPE_OPTS = {
     '学名薬査験登記（ジェネリック許可証）',
     '許可証変更申請（Major Variation）',
     '許可証変更申報（Minor Variation）',
-    '処方薬→指示薬/成薬 転換申請',
+    '処方薬→指示薬/成薬 転換申請'
   ],
   // SG: HSA 手続き種別
   SG:[
@@ -1222,7 +1222,7 @@ var DRUG_TYPE_OPTS = {
     'Verification NDA（EU/US/AU 承認品基準）',
     'Post-approval Variation - Major',
     'Post-approval Variation - Minor',
-    'Rx-to-OTC Reclassification',
+    'Rx-to-OTC Reclassification'
   ],
   // AU: TGA 手続き種別
   AU:[
@@ -1231,7 +1231,7 @@ var DRUG_TYPE_OPTS = {
     'AUST L Listing（OTC低リスク品）- Electronic Listing',
     'AUST L(A) Listed Medicine with Assessed Claims',
     'Rx to Schedule 2/3 OTC Switch Application',
-    'Variation to Registered/Listed Medicine',
+    'Variation to Registered/Listed Medicine'
   ],
   // CA: Health Canada 手続き種別
   CA:[
@@ -1240,7 +1240,7 @@ var DRUG_TYPE_OPTS = {
     'Supplement to NDS/ANDS - Major Change',
     'Notifiable Change（Minor Change）',
     'Natural Health Product (NHP) - Product Licence',
-    'Rx-to-OTC Switch（Self-selection）',
+    'Rx-to-OTC Switch（Self-selection）'
   ],
   // BR: ANVISA 手続き種別
   BR:[
@@ -1249,7 +1249,7 @@ var DRUG_TYPE_OPTS = {
     'Similar Medicine 登録申請',
     'Post-registration Variation（変更申請）',
     'Isento de Prescrição (MIP) 登録',
-    'Fitoterápico（植物薬）登録申請',
+    'Fitoterápico（植物薬）登録申請'
   ],
   OTHER:['新規承認申請（Initial MA）','変更申請（Variation）','剤形追加（Line Extension）','ジェネリック申請','自由記述']
 };
@@ -1783,25 +1783,18 @@ function buildPrompt() {
 }
 
 var REPORT_SYSTEM = 'You are an international OTC pharmaceutical regulatory expert AI. LANG_INSTRUCTION\n'
-  + 'Based on the formulation info provided, return a comprehensive JSON regulatory strategy report.\n'
-  + 'CRITICAL INSTRUCTION: Your ENTIRE response must be a single valid JSON object. Do NOT use markdown code fences (no ```json, no ```). Do NOT add any text before or after the JSON. Start your response with { and end with }.\n'
-  + 'JSON structure:\n'
-  + '{"regulatory_pathway":{"countries":[{"country":"","authority":"","classification":"","application_type":"","review_timeline":"","key_risks":[]}],"strategy_summary":""},'
+  + 'Return ONLY a valid JSON object (no markdown, no ``` fences). Start with { end with }.\n'
+  + 'Schema: {"regulatory_pathway":{"countries":[{"country":"","authority":"","classification":"","application_type":"","review_timeline":"","key_risks":[]}],"strategy_summary":""},'
   + '"required_documents":{"common":[{"category":"","items":[],"priority":"mandatory","notes":""}],"country_specific":[{"country":"","items":[],"notes":""}]},'
-  + '"specifications":{"api_specs":[{"name":"","method":"","criterion":"","notes":""}],"product_specs":[{"name":"","method":"","criterion":"","notes":""}],"stability":{"conditions":[],"duration":"","notes":""}},'
+  + '"specifications":{"api_specs":[{"name":"","method":"","criterion":""}],"product_specs":[{"name":"","method":"","criterion":""}],"stability":{"conditions":[],"duration":"","notes":""}},'
   + '"cpp":[{"parameter":"","target":"","justification":"","risk_level":"high"}],'
-  + '"novel_ingredient_requirements":null,'
-  + '"compendial_requirements":null,'
-  + '"medical_strategy":{"beq_strategy":"","clinical_requirements":[{"country":"","requirement":"","rationale":""}],"safety_data_package":[],"switch_considerations":"","biowaiver_possibility":""},'
+  + '"medical_strategy":{"beq_strategy":"","clinical_requirements":[{"country":"","requirement":"","rationale":""}],"safety_data_package":[],"biowaiver_possibility":""},'
   + '"regulatory_differences":[{"topic":"","details":""}],'
   + '"timeline":[{"phase":"","duration":"","key_tasks":[]}],'
-  + '"additional_notes":""}\n'
-  + 'Rules:\n'
-  + '- novel_ingredient_requirements: include detailed object only if novel ingredients present, else null\n'
-  + '- compendial_requirements: include only if non-compendial excipients present, else null. For JP: food additive standards (食添規) compliance exempts 薬添規 and toxicity data. For EU: Reg.1333/2008 (colorants) and 1334/2008 (flavors). For US: FDA GRAS/IIG. Note: Japanese food additive exemption does NOT apply to non-JP countries.\n'
-  + '- medical_strategy: base BEQ strategy on reference product details. Assess BCS biowaiver eligibility.\n'
-  + '- application_type: use the exact regulatory procedure type selected by user (e.g. Initial MA via DCP, Type II Variation, NDA 505(b)(2), etc.)\n'
-  + '- Be comprehensive. Fill all fields with substantive content.';
+  + '"novel_ingredient_requirements":null,"compendial_requirements":null,"additional_notes":""}\n'
+  + 'Fill all fields with real substantive content based on the input. Be specific and accurate for each country.\n'
+  + 'For application_type: use exact procedure name from user input (Initial MA/DCP/MRP, Type IB/II Variation, NDA 505(b)(2), ANDA, etc.)\n'
+  + 'For compendial_requirements: JP food additive exemption (食添規) applies JP only; EU uses Reg.1333/1334/2008; US uses FDA GRAS/IIG.';
 
 var CHECKLIST_SYSTEM = 'You are an OTC pharmaceutical regulatory expert. LANG_INSTRUCTION\n'
   + 'CRITICAL: Respond with ONLY a raw JSON object. No markdown (no ```). Start with { end with }.\n'
@@ -1921,7 +1914,7 @@ async function apiCall(system, prompt, retries) {
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 6000,
+        max_tokens: 4096,
         system: system,
         messages: [{role:'user', content:prompt}]
       })
